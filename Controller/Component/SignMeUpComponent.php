@@ -1,8 +1,20 @@
 <?php
+class SignMeUpComponent extends Component {
+	private $controller;
+	public $components = array( 'RequestHandler', 'Session', 'Email', 
+		'Auth' => array(
+			/*'loginAction' => array(
+				'controller' => 'Home',
+				'action' => 'login',
+			),*/
+			'authenticate' => array(
+				'Form' => array(
+					'fields' => array('username' => 'email')
+				)
+			)
+		)
+	);
 
-class SignMeUpComponent extends Object {
-
-	public $components = array('Session', 'Email', 'Auth', 'RequestHandler');
 	public $defaults = array(
 		'activation_field' => 'activation_code',
 		'useractive_field' => 'active',
@@ -23,19 +35,20 @@ class SignMeUpComponent extends Object {
 	public $name = 'SignMeUp';
 	public $uses = array('SignMeUp');
 
-	public function initialize(&$controller, $settings = array()) {
+	public function __construct(ComponentCollection $collection, $settings = array()) {
+		$settings = array_merge($this->defaults, $settings);
+		parent::__construct($collection, $settings);
+	}
+	
+	public function initialize(Controller $controller) {
 		$this->__loadConfig();
-		if (!is_array($settings)) {
-			die('Supplied inline config is not an array');
-		}
-		$settings = array_merge($settings, Configure::read('SignMeUp'));
-		$this->settings = array_merge($this->defaults, $settings);
+		$this->settings = array_merge(Configure::read('SignMeUp'), $this->defaults);
 		$this->controller = &$controller;
 	}
 
 	private function __loadConfig() {
 		if (Configure::load('SignMeUp.sign_me_up') === false) {
-			die('Could not load sign me up config');
+			die(__d('SignMeUp','Could not load sign me up config'));
 		}
 	}
 
@@ -71,22 +84,26 @@ class SignMeUpComponent extends Object {
 			$this->controller->loadModel($model);
 			$this->controller->{$model}->set($this->controller->data);
 			if ($this->controller->{$model}->validates()) {
+				$saveData = $this->controller->data;
+				
 				if (!empty($activation_field)) {
-					$this->controller->data[$model][$activation_field] = $this->controller->{$model}->generateActivationCode($this->controller->data);
+					//$this->controller->data[$model][$activation_field] = $this->controller->{$model}->generateActivationCode($this->controller->data);
+					$saveData[$model][$activation_field] = $this->controller->{$model}->generateActivationCode($this->controller->data);
 				} elseif (!empty($useractive_field)) {
-					$this->controller->data[$model][$useractive_field] = true;
+					//$this->controller->data[$model][$useractive_field] = true;
+					$saveData[$model][$useractive_field] = true;
 				}
-				if ($this->controller->{$model}->save($this->controller->data, false)) {
+				if ($this->controller->{$model}->save($saveData, false)) {
 					//If an activation field is supplied send out an email
 					if (!empty($activation_field)) {
-						$this->__sendActivationEmail($this->controller->data[$model]);
+						$this->__sendActivationEmail($saveData[$model]);
 						if (!$this->RequestHandler->isAjax()) {
 							$this->controller->redirect(array('action' => 'activate'));
 						} else {
 							return true;
 						}
 					} else {
-						$this->__sendWelcomeEmail($this->controller->data[$model]);
+						$this->__sendWelcomeEmail($saveData[$model]);
 					}
 					if (!$this->RequestHandler->isAjax()) {
 						$this->controller->redirect($this->Auth->loginAction);
@@ -107,8 +124,10 @@ class SignMeUpComponent extends Object {
 	}
 
 	private function __setTemplate($template) {
-		if (!file_exists(ELEMENTS.'email/'.$this->Email->sendAs.'/'.$template.'.ctp')) {
-			$this->log('SignMeUp Error "Template Not Found": '.ELEMENTS.'email/'.$this->Email->sendAs.'/'.$template.'.ctp');
+		$elementsPath = APP . 'View' .DS . 'Elements' . DS . 'email' . DS;
+		
+		if (!file_exists($elementsPath.$this->Email->sendAs.'/'.$template.'.ctp')) {
+			$this->log('SignMeUp Error "Template Not Found": '.$elementsPath.$this->Email->sendAs.'/'.$template.'.ctp');
 		} else {
 			$this->Email->template = $template;
 			return true;
@@ -156,8 +175,10 @@ class SignMeUpComponent extends Object {
 				}
 
 				$inactive_user = $this->controller->{$model}->find('first', array('conditions' => array($activation_field => $activation_code), 'recursive' => -1));
+				
+				
 				if (!empty($inactive_user)) {
-					$this->controller->{$model}->id = $inactive_user[$model]['id'];
+					$this->controller->{$model}->id = $inactive_user[$model][(isSet($this->controller->{$model}->primaryKey) ? $this->controller->{$model}->primaryKey : 'id')];
 					if (!empty($useractive_field)) {
 						$data[$model][$useractive_field] = true;
 					}
@@ -207,7 +228,7 @@ class SignMeUpComponent extends Object {
 			$this->controller->set(compact('password'));
 			if ($this->controller->{$model}->save($user) && $this->__sendNewPassword($user[$model])) {
 				if (!$this->RequestHandler->isAjax()) {
-					$this->Session->setFlash('Thank you '.$user[$model][$username_field].', your new password has been emailed to you.');
+					$this->Session->setFlash(sprintf(__d('SignMeUp','Thank you %s, your new password has been emailed to you.'),$user[$model][$username_field])); //TOGO: log in the user+show him the reset password page
 					$this->controller->redirect($this->Auth->loginAction);
 				} else {
 					return true;
@@ -231,18 +252,19 @@ class SignMeUpComponent extends Object {
 		$this->controller->loadModel($model);
 		$user = $this->controller->{$model}->find('first', array('conditions' => array('email' => $data['email']), 'recursive' => -1));
 		if (!empty($user)) {
-			$user[$model][$password_reset_field] = md5(String::uuid());
+			$saveData[$model][$password_reset_field] = md5(String::uuid());
+			$saveData[$model][$this->controller->{$model}->primaryKey] = $user[$model][$this->controller->{$model}->primaryKey];
 
-			if ($this->controller->{$model}->save($user) && $this->__sendForgottenPassword($user[$model])) {
+			if ($this->controller->{$model}->save($saveData) && $this->__sendForgottenPassword($user[$model])) {
 				if (!$this->RequestHandler->isAjax()) {
-					$this->Session->setFlash('Thank you. A password recovery email has now been sent to '.$data['email']);
+					$this->Session->setFlash( sprintf(__d('SignMeUp','Thank you. A password recovery email has now been sent to %s'), $data['email']) );
 					$this->controller->redirect($this->Auth->loginAction);
 				} else {
 					return true;
 				}
 			}
 		} else {
-			$this->controller->{$model}->invalidate('email', 'No user found with email: '.$data['email']);
+			$this->controller->{$model}->invalidate('email', sprintf(__d('SignMeUp','No user found with email: %s', $data['email'])));
 		}
 	}
 
@@ -255,5 +277,33 @@ class SignMeUpComponent extends Object {
 			}
 		}
 	}
+
+   /* private function _generateUserName($data) {
+        extract($this->settings);
+        $prefix = '';
+        if(isSet($data[$email_field]) && $data[$email_field]) {
+            $tmp = explode('@', $data[$email_field]);
+            $prefix = $tmp[0];
+        } else if(isSet($data[$display_name_field]) && $data[$display_name_field]) {
+            $prefix = str_ireplace(array(' ', "\n", "\t"), array('', '', ''), trim($display_name_field));
+        } else {
+            return null;
+        }
+
+
+
+        //Check that username is unique
+        $model = $this->controller->modelClass;
+        $newUsername = $prefix;
+        $foundUsername = true;
+        while($foundUsername) {
+            $foundUsername = $this->controller->{$model}->find('first', array('conditions'=>array($username_field=>$newUsername)));
+            if($foundUsername) {
+                $newUsername = $prefix.'_'.rand(1, 99);
+            }
+        }
+
+        return $newUsername;
+    }*/
 
 }

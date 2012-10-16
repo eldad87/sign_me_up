@@ -1,9 +1,8 @@
 <?php
-
 class SignMeUpBehavior extends ModelBehavior {
 
 	public $validate = array(
-		'username' => array(
+		/*'username' => array(
 			'pattern' => array(
 				'rule' => array('custom','/[a-zA-Z0-9\_\-]{4,30}$/i'),
 				'message'=> 'Usernames must be 4 characters or longer with no spaces.'
@@ -12,7 +11,7 @@ class SignMeUpBehavior extends ModelBehavior {
 				'rule' => 'isUnique',
 				'message' => 'Sorry, this username already exists'
 			),
-		),
+		),*/
 		'email' => array(
 			'validEmail' => array(
 				'rule' => array('email', true),
@@ -23,9 +22,9 @@ class SignMeUpBehavior extends ModelBehavior {
 				'message' => 'Sorry, this email address is already in use'
 			),
 		),
-		'password1' => array(
+		'password' => array(
 			'match' => array(
-				'rule' => array('confirmPassword', 'password1', 'password2'),
+				'rule' => array('confirmPassword', 'password', 'password2'),
 				'message' => 'Passwords do not match'
 			),
 			'minRequirements' => array(
@@ -35,17 +34,24 @@ class SignMeUpBehavior extends ModelBehavior {
 		),
 	);
 
-	public function beforeValidate(&$Model) {
+	public function beforeValidate(Model $Model) {
 		$this->model = $Model;
 		$this->model->validate = array_merge($this->validate, $this->model->validate);
-		return true;
 	}
 
 	public function confirmPassword($field, $password1, $password2) {
-		if ($this->model->data[$this->model->alias]['password1'] == $this->model->data[$this->model->alias]['password2']) {
-			$this->model->data[$this->model->alias]['password'] = Security::hash($this->model->data[$this->model->alias]['password1'], null, true);
+		if ($this->model->data[$this->model->alias]['password2'] == $this->model->data[$this->model->alias]['password']) {
 			return true;
 		}
+	}
+	
+	public function beforeSave( Model $Model ) {
+		if(!isSet($Model->data['User']['password'])) {
+			return true;
+		}
+		App::uses('AuthComponent', 'Controller/Component');
+		$Model->data['User']['password'] = AuthComponent::password($Model->data['User']['password']);
+		return true;
 	}
 
 	public function generateActivationCode($data) {
@@ -53,5 +59,4 @@ class SignMeUpBehavior extends ModelBehavior {
 	}
 
 }
-
 ?>
