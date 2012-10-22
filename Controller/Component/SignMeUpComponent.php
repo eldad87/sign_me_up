@@ -118,7 +118,7 @@ class SignMeUpComponent extends Component {
 	private function __isLoggedIn() {
 		if ($this->Auth->user()) {
 			if (!$this->RequestHandler->isAjax()) {
-				$this->controller->redirect($this->Auth->loginRedirect);
+				$this->controller->redirect($this->Auth->loginRedirect ? $this->Auth->loginRedirect : '/');
 			}
 		}
 	}
