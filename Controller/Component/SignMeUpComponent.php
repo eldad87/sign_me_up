@@ -16,7 +16,7 @@ class SignMeUpComponent extends Component {
 	);
 
 	public $defaults = array(
-		'activation_field' => 'activation_code',
+		'activation_field' => false,
 		'useractive_field' => 'active',
 		'welcome_subject' => 'Welcome',
 		'activation_subject' => 'Please Activate Your Account',
@@ -39,7 +39,7 @@ class SignMeUpComponent extends Component {
 		$settings = array_merge($this->defaults, $settings);
 		parent::__construct($collection, $settings);
 	}
-	
+
 	public function initialize(Controller $controller) {
 		$this->__loadConfig();
 		$this->settings = array_merge(Configure::read('SignMeUp'), $this->defaults);
@@ -85,7 +85,7 @@ class SignMeUpComponent extends Component {
 			$this->controller->{$model}->set($this->controller->data);
 			if ($this->controller->{$model}->validates()) {
 				$saveData = $this->controller->data;
-				
+
 				if (!empty($activation_field)) {
 					//$this->controller->data[$model][$activation_field] = $this->controller->{$model}->generateActivationCode($this->controller->data);
 					$saveData[$model][$activation_field] = $this->controller->{$model}->generateActivationCode($this->controller->data);
@@ -94,16 +94,20 @@ class SignMeUpComponent extends Component {
 					$saveData[$model][$useractive_field] = true;
 				}
 				if ($this->controller->{$model}->save($saveData, false)) {
+                    //Load data from DB
+                    $this->controller->{$model}->recursive = -1;
+                    $userData = $this->controller->{$model}->find('first', array('conditions'=>array($this->controller->{$model}->primaryKey=>$this->controller->{$model}->id)));
+
 					//If an activation field is supplied send out an email
 					if (!empty($activation_field)) {
-						$this->__sendActivationEmail($saveData[$model]);
+						$this->__sendActivationEmail($userData[$model]);
 						if (!$this->RequestHandler->isAjax()) {
 							$this->controller->redirect(array('action' => 'activate'));
 						} else {
 							return true;
 						}
 					} else {
-						$this->__sendWelcomeEmail($saveData[$model]);
+						$this->__sendWelcomeEmail($userData[$model]);
 					}
 					if (!$this->RequestHandler->isAjax()) {
 						$this->controller->redirect($this->Auth->loginAction);
@@ -111,7 +115,7 @@ class SignMeUpComponent extends Component {
 						return true;
 					}
 				}
-			}
+			}   return false;
 		}
 	}
 
