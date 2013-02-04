@@ -2,16 +2,6 @@
 class SignMeUpBehavior extends ModelBehavior {
 
 	public $validate = array(
-		/*'username' => array(
-			'pattern' => array(
-				'rule' => array('custom','/[a-zA-Z0-9\_\-]{4,30}$/i'),
-				'message'=> 'Usernames must be 4 characters or longer with no spaces.'
-			),
-			'usernameExists' => array(
-				'rule' => 'isUnique',
-				'message' => 'Sorry, this username already exists'
-			),
-		),*/
 		'email' => array(
 			'validEmail' => array(
 				'rule'      => array('email', true),
@@ -41,7 +31,7 @@ class SignMeUpBehavior extends ModelBehavior {
                 'rule'      => '/^(?=.*\d)(?=.*[a-z]).{6,}$/i',
                 'message'   => 'Passwords must have at least one alpha and one numeric, min 6 characters'
             )
-		),
+		)
 	);
 
 	public function beforeValidate(Model $Model) {
@@ -75,5 +65,42 @@ class SignMeUpBehavior extends ModelBehavior {
 		return Security::hash(serialize($data).microtime().rand(1,100), null, true);
 	}
 
+
+    public function getFailedLoginCount(Model $Model, $email, $minInterval=5) {
+        $query = '
+                    SELECT
+                        IF( DATE_ADD(last_failed_login, INTERVAL '.$minInterval.' MINUTE)>NOW(), failed_login_count, 0 ) AS last_failed_login
+                    FROM `users` AS `'.$Model->alias.'`
+                    WHERE `email` = \''.Sanitize::escape($email).'\'
+                    LIMIT 1
+                 ';
+
+        $Model->recursive = -1;
+        $found = $Model->query($query);
+        if(!$found) {
+           return false;
+       }
+
+        return $found[0][0]['last_failed_login'];
+    }
+    public function updateFailedLoginCounter(Model $Model, $email, $minInterval=5) {
+        $update = '
+                     UPDATE users
+                     SET
+                        failed_login_count =
+                            IF(
+                                DATE_ADD(last_failed_login, INTERVAL '.$minInterval.' MINUTE)>NOW(),
+                                failed_login_count+1,
+                                1
+                            ),
+                        last_failed_login=NOW()
+                    WHERE
+                        email = \''.Sanitize::escape($email).'\'
+                ';
+
+
+        //Update DB
+        return $Model->query($update);
+    }
 }
 ?>
