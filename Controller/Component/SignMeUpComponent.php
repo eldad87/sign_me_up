@@ -50,6 +50,19 @@ class SignMeUpComponent extends Component {
 		if (Configure::load('SignMeUp.sign_me_up') === false) {
 			die(__d('SignMeUp','Could not load sign me up config'));
 		}
+
+        $this->Email->welcome_subject           = Configure::read('SignMeUp.welcome_subject');
+        $this->Email->activation_subject        = Configure::read('SignMeUp.activation_subject');
+        $this->Email->password_reset_subject    = Configure::read('SignMeUp.password_reset_subject');
+        $this->Email->new_password_subject      = Configure::read('SignMeUp.new_password_subject');
+
+
+
+        //Gmail patch, comment those settings to use the default
+        config('email');
+        $ec = new EmailConfig();
+        $this->Email->delivery = 'smtp';
+        $this->Email->smtpOptions = $ec->gmail;
 	}
 
 	private function __setUpEmailParams($user) {
@@ -66,7 +79,7 @@ class SignMeUpComponent extends Component {
 		$this->controller->set(compact('user'));
 	}
 
-	private function __parseEmailSubject($action = '', $user = array()) {
+	/*private function __parseEmailSubject($action = '', $user = array()) {
 		$subject = $this->Email->{$action.'_subject'};
 		preg_match_all('/%(\w+?)%/', $subject, $matches);
 		foreach ($matches[1] as $match) {
@@ -74,7 +87,7 @@ class SignMeUpComponent extends Component {
 				$this->Email->subject = str_replace('%'.$match.'%', $user[$match], $subject);
 			}
 		}
-	}
+	}*/
 
 	public function register() {
 		$this->__isLoggedIn();
@@ -128,19 +141,13 @@ class SignMeUpComponent extends Component {
 	}
 
 	private function __setTemplate($template) {
-		$elementsPath = APP . 'View' .DS . 'Elements' . DS . 'email' . DS;
-		
-		if (!file_exists($elementsPath.$this->Email->sendAs.'/'.$template.'.ctp')) {
-			$this->log('SignMeUp Error "Template Not Found": '.$elementsPath.$this->Email->sendAs.'/'.$template.'.ctp');
-		} else {
-			$this->Email->template = $template;
-			return true;
-		}
+        $this->Email->template = $template;
 	}
 
 	protected function __sendActivationEmail($userData) {
 		$this->__setUpEmailParams($userData);
-		$this->__parseEmailSubject('activation', $userData);
+		//$this->__parseEmailSubject('activation', $userData);
+        $this->Email->subject = $this->Email->activation_subject;
 		if ($this->__setTemplate(Configure::read('SignMeUp.activation_template'))) {
 			if ($this->Email->send()) {
 				return true;
@@ -150,7 +157,8 @@ class SignMeUpComponent extends Component {
 
 	protected function __sendWelcomeEmail($userData) {
 		$this->__setUpEmailParams($userData);
-		$this->__parseEmailSubject('welcome', $userData);
+		//$this->__parseEmailSubject('welcome', $userData);
+        $this->Email->subject = $this->Email->welcome_subject;
 		if ($this->__setTemplate(Configure::read('SignMeUp.welcome_template'))) {
 			if ($this->Email->send()) {
 				return true;
